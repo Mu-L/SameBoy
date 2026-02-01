@@ -1312,7 +1312,7 @@ static void prepare_noise_start(GB_gameboy_t *gb)
     }
     
     /* TODO: This is weird, is the clock going out of sync? */
-    if (!divisor && gb->model <= GB_MODEL_CGB_C && was_background_counting && !gb->apu.is_active[GB_NOISE]) {
+    if (!divisor && gb->model <= GB_MODEL_CGB_C && was_background_counting && !gb->apu.is_active[GB_NOISE] && gb->cgb_double_speed) {
         gb->apu.noise_channel.counter_countdown--;
     }
     if (div_1_glitch) {
@@ -1361,7 +1361,7 @@ static void nr43_write(GB_gameboy_t *gb, uint8_t new)
     if ((old & 0xF0) == (new & 0xF0)) return;
     
     uint16_t effective_counter = gb->apu.noise_channel.counter;
-    if (gb->model <= GB_MODEL_CGB_C) {
+    if (gb->model <= GB_MODEL_CGB_C && gb->apu.noise_channel.countdown_reloaded) {
         effective_counter |= (effective_counter - 1) & 0x3FFF;
     }
     bool old_bit = (effective_counter >> (old >> 4)) & 1;
