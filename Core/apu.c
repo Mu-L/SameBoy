@@ -1347,7 +1347,11 @@ static void nr43_write(GB_gameboy_t *gb, uint8_t new)
         TODO: Non-determinism aside, this is currently only 100% accurate in CGB-E mode, where
         my specific CGB-E is currently emulated.  My CGB-D, under rare cases, samples a second
         intermediate value,  and this is not  currently emulated.  AGB revisions are extremely
-        glitchy, and are hard to research. Pre-CGB-D revisions are WIP.
+        glitchy, and are hard to research.
+     
+        Due to FF-write glitches in pre-CGB-D revisions, all writes (even no-change writes) go
+        through 3 intermediate values by definition. Also, the effective counter value used is
+        ORed with the next (or previous, timing needs to be verified) value.
     */
     bool old_narrow = gb->apu.noise_channel.narrow;
     gb->apu.noise_channel.narrow = new & 8;
@@ -1356,11 +1360,15 @@ static void nr43_write(GB_gameboy_t *gb, uint8_t new)
     
     if ((old & 0xF0) == (new & 0xF0)) return;
     
-    bool old_bit = (gb->apu.noise_channel.counter >> (old >> 4)) & 1;
+    uint16_t effective_counter = gb->apu.noise_channel.counter;
+    if (gb->model <= GB_MODEL_CGB_C) {
+        effective_counter |= (effective_counter - 1) & 0x3FFF;
+    }
+    bool old_bit = (effective_counter >> (old >> 4)) & 1;
 
     uint8_t glitch_value = (old & 0x7F) | (new & 0x80);
-    bool glitch_bit = (gb->apu.noise_channel.counter >> (glitch_value >> 4)) & 1;
-    bool new_bit = (gb->apu.noise_channel.counter >> (new >> 4)) & 1;
+    bool glitch_bit = (effective_counter >> (glitch_value >> 4)) & 1;
+    bool new_bit = (effective_counter >> (new >> 4)) & 1;
     bool force_glitch = false;
 
     if (gb->model == GB_MODEL_CGB_D) {
@@ -2036,6 +2044,9 @@ void GB_apu_write(GB_gameboy_t *gb, uint8_t reg, uint8_t value)
                     gb->apu.noise_channel.counter_countdown =
                     divisor + (divisor == 2? 0 : inline_const(uint8_t[], {2, 1, 4, 3})[(gb->apu.noise_channel.alignment) & 3]);
                 }
+            }
+            if (gb->model <= GB_MODEL_CGB_C) {
+                nr43_write(gb, 0xff);
             }
             nr43_write(gb, value);
             
