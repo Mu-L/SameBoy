@@ -1638,8 +1638,21 @@ static void nr43_write(GB_gameboy_t *gb, uint8_t new)
             gb->apu.noise_channel.narrow = true;
             step_lfsr(gb, 0);
             gb->apu.noise_channel.narrow = previous_narrow;
+            if ((new & 0xf0) <= 0x20 && glitch_bit && !(effective_counter & 8)) { // No clue why that specific bit is tested
+                // Non-deterministic, not fully tested for revision differences and wide mode
+                // Step twice?
+                step_lfsr(gb, 0);
+                gb->apu.noise_channel.lfsr &= ~(gb->apu.noise_channel.narrow? 0x4040 : 0x4000);
+                gb->apu.noise_channel.lfsr |= (gb->apu.noise_channel.lfsr & (gb->apu.noise_channel.narrow? 0x2020 : 0x2000)) << 1;
+            }
         }
         else {
+            step_lfsr(gb, 0);
+        }
+    }
+    else if (gb->model <= GB_MODEL_CGB_C) {
+        if ((new & 0xf0) <= 0x20 && !glitch_bit && !new_bit && !old_bit && (effective_counter & 8)) { // No clue why that specific bit is tested
+            // Step twice?
             step_lfsr(gb, 0);
         }
     }
@@ -2046,6 +2059,22 @@ void GB_apu_write(GB_gameboy_t *gb, uint8_t reg, uint8_t value)
                 }
             }
             if (gb->model <= GB_MODEL_CGB_C) {
+                /* TODO: CGB≤C (and DMG) have various unemulated quirks when you write to NR43 just as the counter reloads */
+                if (gb->apu.noise_channel.countdown_reloaded) {
+                    bool old_bit = (gb->apu.noise_channel.counter >> (gb->io_registers[GB_IO_NR43] >> 4)) & 1;
+                    bool glitch_bit = (gb->apu.noise_channel.counter >> 7) & 1;
+                    bool new_bit = (gb->apu.noise_channel.counter >> (value >> 4)) & 1;
+                    
+                    if (!old_bit && new_bit && glitch_bit) {
+                        uint16_t previous_counter = (gb->apu.noise_channel.counter - 1) & 0x3FFF;
+                        bool old_bit = (previous_counter >> (gb->io_registers[GB_IO_NR43] >> 4)) & 1;
+                        bool glitch_bit = (previous_counter >> 7) & 1;
+                        bool new_bit = (previous_counter >> (value >> 4)) & 1;
+                        if (old_bit && !new_bit && glitch_bit) {
+                            step_lfsr(gb, 0);
+                        }
+                    }
+                }
                 nr43_write(gb, 0xff);
             }
             nr43_write(gb, value);
