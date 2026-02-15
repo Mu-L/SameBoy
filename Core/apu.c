@@ -1248,13 +1248,18 @@ static void prepare_noise_start(GB_gameboy_t *gb)
             divisor = 8;
         }
         else if (divisor == 1) {
-            /* TODO: I'm not 100% sure this only affects NR43 = 1X */
-            if ((gb->io_registers[GB_IO_NR43] & 0xf0) == 0x10 && (gb->apu.noise_channel.counter & 1)) {
-                instant_step = true;
-            }
-            /* TODO: needs further research, the conditions are very odd. What if NR43 changes before stepping? */
-            if ((gb->io_registers[GB_IO_NR43] & 0xf0) == 0x10 && !gb->apu.noise_channel.did_step_counter) {
+            if (!gb->apu.noise_channel.did_step_counter) {
                 div_1_glitch = true;
+            }
+            
+            uint16_t mask = 1 << (gb->io_registers[GB_IO_NR43] >> 4);
+            bool old_bit = gb->apu.noise_channel.counter & mask;
+            gb->apu.noise_channel.counter++;
+            gb->apu.noise_channel.counter &= 0x3FFF;
+            bool new_bit = gb->apu.noise_channel.counter & mask;
+            
+            if ((new_bit && !old_bit)) {
+                instant_step = true;
             }
         }
     }
